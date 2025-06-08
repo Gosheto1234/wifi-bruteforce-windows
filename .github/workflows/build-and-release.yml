@@ -29,7 +29,7 @@ jobs:
 
       - name: Build executable
         run: >
-         pyinstaller --onefile --windowed --icon icon.ico --name WifiBruteForcer.exe Wifi\ Bruteforce\ App.py
+         pyinstaller --onefile --windowed --icon icon.ico --name WifiBruteForcer.exe bruteforce.py
           
 
       - name: Create Release
