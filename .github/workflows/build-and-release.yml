@@ -29,23 +29,15 @@ jobs:
 
       - name: Build executable
         run: >
-         pyinstaller --onefile --windowed --icon icon.ico --name WifiBruteForcer.exe bruteforce.py
-          
+          pyinstaller --onefile --windowed --icon icon.ico --name WifiBruteForcer.exe bruteforce.py
 
-      - name: Create Release
-        id: create_release
+      - name: Create Release and Upload
         uses: softprops/action-gh-release@v1
         with:
           tag_name: main-${{ github.sha }}
           name: Release ${{ github.sha }}
           body: |
             Automated build for commit `${{ github.sha }}`
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Asset
-        uses: softprops/action-gh-release@v1
-        with:
           files: dist/WifiBruteForcer.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
