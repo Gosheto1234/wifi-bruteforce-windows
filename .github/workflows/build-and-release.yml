@@ -28,13 +28,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build executable
-        run: |
-          pyinstaller \
-            --onefile \
-            --windowed \
-            --name WifiBruteForcer.exe \
-            --icon icon.ico \        # ← add this line
-            path/to/your_script.py
+        run: >
+         pyinstaller --onefile --windowed --icon icon.ico --name WifiBruteForcer.exe Wifi\ Bruteforce\ App.py
+          
 
       - name: Create Release
         id: create_release
