@@ -9,42 +9,60 @@ try:
 except ImportError:
     raise ImportError("pywifi is required on Windows. Install with 'pip install pywifi'")
 
+# Dark theme colors
+BG_COLOR = "#2e2e2e"
+FG_COLOR = "#ffffff"
+BTN_BG = "#444444"
+BTN_ACTIVE_BG = "#555555"
+ENTRY_BG = "#3e3e3e"
+LISTBOX_BG = "#3e3e3e"
+SELECT_BG = "#555555"
+
 class WifiBruteForcer:
     def __init__(self, master):
         self.master = master
         master.title("WiFi Brute Forcer (Windows)")
         master.geometry("520x480")
+        master.configure(bg=BG_COLOR)
 
         # Hidden SSID toggle
         self.hidden_var = tk.BooleanVar()
-        hidden_frame = tk.Frame(master)
+        hidden_frame = tk.Frame(master, bg=BG_COLOR)
         tk.Checkbutton(hidden_frame, text="Hidden SSID", variable=self.hidden_var,
-                       command=self._toggle_hidden).pack(side=tk.LEFT)
-        tk.Label(hidden_frame, text="Manual SSID:").pack(side=tk.LEFT, padx=(10,0))
-        self.ssid_entry = tk.Entry(hidden_frame, width=30, state=tk.DISABLED)
+                       command=self._toggle_hidden, bg=BG_COLOR, fg=FG_COLOR,
+                       selectcolor=BG_COLOR, activebackground=BG_COLOR, activeforeground=FG_COLOR).pack(side=tk.LEFT)
+        tk.Label(hidden_frame, text="Manual SSID:", bg=BG_COLOR, fg=FG_COLOR).pack(side=tk.LEFT, padx=(10,0))
+        self.ssid_entry = tk.Entry(hidden_frame, width=30, state=tk.DISABLED,
+                                   bg=ENTRY_BG, fg=FG_COLOR, insertbackground=FG_COLOR)
         self.ssid_entry.pack(side=tk.LEFT)
         hidden_frame.pack(pady=5)
 
         # Scan and list
-        self.scan_btn = tk.Button(master, text="Scan Networks", command=self.scan_networks)
+        self.scan_btn = tk.Button(master, text="Scan Networks", command=self.scan_networks,
+                                  bg=BTN_BG, fg=FG_COLOR, activebackground=BTN_ACTIVE_BG, activeforeground=FG_COLOR)
         self.scan_btn.pack(pady=5)
 
-        self.network_listbox = tk.Listbox(master, selectmode=tk.SINGLE, width=60, height=8)
+        self.network_listbox = tk.Listbox(master, selectmode=tk.SINGLE,
+                                          width=60, height=8,
+                                          bg=LISTBOX_BG, fg=FG_COLOR,
+                                          selectbackground=SELECT_BG, selectforeground=FG_COLOR)
         self.network_listbox.pack(pady=5)
 
         # Dictionary load
-        self.load_dict_btn = tk.Button(master, text="Load Dictionary", command=self.load_dictionary)
+        self.load_dict_btn = tk.Button(master, text="Load Dictionary", command=self.load_dictionary,
+                                       bg=BTN_BG, fg=FG_COLOR, activebackground=BTN_ACTIVE_BG, activeforeground=FG_COLOR)
         self.load_dict_btn.pack(pady=5)
 
-        self.dict_label = tk.Label(master, text="No dictionary loaded")
+        self.dict_label = tk.Label(master, text="No dictionary loaded", bg=BG_COLOR, fg=FG_COLOR)
         self.dict_label.pack(pady=5)
 
         # Start button
-        self.start_btn = tk.Button(master, text="Start Brute Force", command=self.start_bruteforce)
+        self.start_btn = tk.Button(master, text="Start Brute Force", command=self.start_bruteforce,
+                                   bg=BTN_BG, fg=FG_COLOR, activebackground=BTN_ACTIVE_BG, activeforeground=FG_COLOR)
         self.start_btn.pack(pady=10)
 
         # Status label
-        self.status_label = tk.Label(master, text="Status: Idle")
+        self.status_label = tk.Label(master, text="Status: Idle", bg=BG_COLOR, fg=FG_COLOR)
         self.status_label.pack(pady=5)
 
         # Initialize wifi
@@ -123,7 +141,6 @@ class WifiBruteForcer:
             profile.cipher = const.CIPHER_TYPE_CCMP
             profile.key = pwd
             if hidden:
-                # mark as hidden network
                 try:
                     profile.hidden = True
                 except AttributeError:
