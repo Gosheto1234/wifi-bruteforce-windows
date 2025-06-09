@@ -16,6 +16,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read version
+        id: read_version
+        run: |
+          # Expect a version.txt in the repo root containing e.g. 1.2.3
+          VERSION=$(cat version.txt)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Setup Python 3.10
         uses: actions/setup-python@v4
         with:
@@ -29,15 +36,14 @@ jobs:
 
       - name: Build executable
         run: >
-          pyinstaller --onefile --windowed --icon icon.ico --name WifiBruteForcer.exe bruteforce.py
-
+             pyinstaller --onefile --windowed --icon icon.ico --name WifiBruteForcer.exe bruteforce.py
       - name: Create Release and Upload
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: main-${{ github.sha }}
-          name: Release ${{ github.sha }}
+          tag_name: v${{ steps.read_version.outputs.version }}
+          name: "WiFi BruteForcer v${{ steps.read_version.outputs.version }}"
           body: |
-            Automated build for commit `${{ github.sha }}`
+            📦 Automated build for version **${{ steps.read_version.outputs.version }}**.
           files: dist/WifiBruteForcer.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
