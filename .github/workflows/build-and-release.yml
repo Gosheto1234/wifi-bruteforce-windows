@@ -18,6 +18,7 @@ jobs:
 
       - name: Read version
         id: read_version
+        shell: bash
         run: |
           # Expect a version.txt in the repo root containing e.g. 1.2.3
           VERSION=$(cat version.txt)
@@ -35,8 +36,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build executable
-        run: >
-             pyinstaller --onefile --windowed --icon icon.ico --name WifiBruteForcer.exe bruteforce.py
+        run: |
+          pyinstaller --onefile --windowed --icon icon.ico --name WifiBruteForcer.exe bruteforce.py
+
       - name: Create Release and Upload
         uses: softprops/action-gh-release@v1
         with:
