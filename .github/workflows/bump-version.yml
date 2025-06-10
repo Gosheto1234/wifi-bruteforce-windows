@@ -1,10 +1,10 @@
-name: 🆙 Bump Patch Version
+name: 🆙 Bump Version (patch with rollover)
 
 on:
   push:
     branches:
       - main
-    # prevent recursion on commits made by this action
+    # don’t retrigger when bumping version.txt itself
     paths-ignore:
       - '.github/workflows/bump-version.yml'
       - 'version.txt'
@@ -27,13 +27,19 @@ jobs:
           VER=$(cat version.txt)
           echo "old=$VER" >> $GITHUB_OUTPUT
 
-      - name: Bump patch version
+      - name: Compute next version
         id: bump
         run: |
           IFS='.' read -r MAJ MIN PATCH <<< "${{ steps.getver.outputs.old }}"
-          NEWPATCH=$((PATCH + 1))
-          echo "${MAJ}.${MIN}.${NEWPATCH}" > version.txt
-          echo "new=${MAJ}.${MIN}.${NEWPATCH}" >> $GITHUB_OUTPUT
+          if [ "$PATCH" -ge 9 ]; then
+            PATCH=0
+            MIN=$((MIN + 1))
+          else
+            PATCH=$((PATCH + 1))
+          fi
+          NEW="${MAJ}.${MIN}.${PATCH}"
+          echo "$NEW" > version.txt
+          echo "new=$NEW" >> $GITHUB_OUTPUT
 
       - name: Commit & push version bump
         run: |
