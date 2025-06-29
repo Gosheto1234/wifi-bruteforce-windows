@@ -48,6 +48,8 @@ class WifiBruteForcer:
         # Scan and list
         self.scan_btn = tk.Button(master, text="Scan Networks", command=self.scan_networks)
         self.scan_btn.pack(pady=5)
+        self.scan_btn.bind("<ButtonPress-1>", self._on_button_press)
+        self.scan_btn.bind("<ButtonRelease-1>", self._on_button_release)
 
         self.network_listbox = tk.Listbox(master, selectmode=tk.SINGLE, width=60, height=8)
         self.network_listbox.pack(pady=5, padx=10, fill=tk.X, expand=True)
@@ -55,6 +57,8 @@ class WifiBruteForcer:
         # Dictionary load
         self.load_dict_btn = tk.Button(master, text="Load Dictionary", command=self.load_dictionary)
         self.load_dict_btn.pack(pady=5)
+        self.load_dict_btn.bind("<ButtonPress-1>", self._on_button_press)
+        self.load_dict_btn.bind("<ButtonRelease-1>", self._on_button_release)
 
         self.dict_label = tk.Label(master, text="No dictionary loaded")
         self.dict_label.pack(pady=5)
@@ -62,6 +66,8 @@ class WifiBruteForcer:
         # Start button
         self.start_btn = tk.Button(master, text="Start Brute Force", command=self.start_bruteforce)
         self.start_btn.pack(pady=10)
+        self.start_btn.bind("<ButtonPress-1>", self._on_button_press)
+        self.start_btn.bind("<ButtonRelease-1>", self._on_button_release)
 
         # Status label
         self.status_label = tk.Label(master, text="Status: Idle")
@@ -74,6 +80,32 @@ class WifiBruteForcer:
         self.dictionary = []
 
         self.apply_current_theme() # Apply theme after all widgets are created
+
+    def _on_button_press(self, event):
+        widget = event.widget
+        if widget.cget('state') == tk.DISABLED:
+            return
+        current_palette = themes.get_current_theme()
+        widget.config(
+            relief=tk.SUNKEN,
+            bg=current_palette.get("btn_active_bg"), # Use active color on press
+            fg=current_palette.get("fg_color") # Ensure fg color remains consistent
+        )
+
+    def _on_button_release(self, event):
+        widget = event.widget
+        if widget.cget('state') == tk.DISABLED:
+            # If button became disabled while pressed, it might not get themed correctly by apply_current_theme
+            # So, explicitly apply standard button theme here if it's now disabled.
+            # However, standard flow is that apply_current_theme handles disabled state.
+            # This is more of a fallback.
+            self.apply_current_theme() # Re-apply theme to ensure it's correct
+            return
+
+        current_palette = themes.get_current_theme()
+        # themes.apply_theme_to_widget will set relief, bg, fg, activebackground, activeforeground
+        themes.apply_theme_to_widget(widget, current_palette)
+
 
     def change_theme(self, selected_theme_capitalized):
         new_theme_name = selected_theme_capitalized.lower()
@@ -109,6 +141,30 @@ class WifiBruteForcer:
                 pass # Silently ignore, or log if necessary
 
         self._update_widget_states_for_theme()
+
+        # Explicitly re-theme listbox items if a theme change occurs
+        if hasattr(self, 'network_listbox') and self.network_listbox.size() > 0:
+            # When the theme changes, we need to update all existing items.
+            # The _animate_list_item_in function will correctly use the new theme
+            # for items that are still in their animation queue.
+            # For items already visible, we update them here.
+            for i in range(self.network_listbox.size()):
+                # We only update items that are not currently in the "hidden" state of the initial animation.
+                # An item is "hidden" if its fg is the same as its bg.
+                current_item_fg = self.network_listbox.itemcget(i, "fg")
+                current_item_bg = self.network_listbox.itemcget(i, "background")
+
+                is_hidden_for_animation = (current_item_fg == current_item_bg) and \
+                                          (current_item_bg != "") # Ensure it's not default uncolored
+
+                if not is_hidden_for_animation:
+                    self.network_listbox.itemconfig(i, {
+                        'bg': current_palette.get("listbox_bg"), # Normal items match listbox background
+                        'fg': current_palette.get("fg_color"),
+                        'selectbackground': current_palette.get("select_bg"),
+                        'selectforeground': current_palette.get("fg_color") # Ensure selected text is also themed
+                    })
+                # If it's_hidden_for_animation, its scheduled _animate_list_item_in will apply the new theme.
 
     def _update_widget_states_for_theme(self):
         current_palette = themes.get_current_theme()
@@ -167,15 +223,57 @@ class WifiBruteForcer:
             results = self.iface.scan_results()
             ssids = sorted({net.ssid for net in results if net.ssid})
             self.networks = ssids
-            for ssid in ssids:
-                self.network_listbox.insert(tk.END, ssid)
-            self.status_label.config(text=f"Status: Found {len(ssids)} networks")
+
+            current_palette = themes.get_current_theme()
+            listbox_bg = current_palette.get("listbox_bg", "#3e3e3e")
+            listbox_fg = current_palette.get("fg_color", "#ffffff") # Standard text color
+
+            if not ssids:
+                self.status_label.config(text="Status: No networks found")
+            else:
+                self.status_label.config(text=f"Status: Found {len(ssids)} networks, populating...")
+
+                for i, ssid in enumerate(ssids):
+                    # Insert initially "invisible" (colors match listbox bg)
+                    self.network_listbox.insert(tk.END, ssid)
+                    self.network_listbox.itemconfig(tk.END, {'bg': listbox_bg, 'fg': listbox_bg})
+
+                    # Schedule the "fade-in"
+                    self.master.after(
+                        50 * (i + 1), # Staggered delay for cascade effect
+                        lambda index=i, item_ssid=ssid: self._animate_list_item_in(index, item_ssid)
+                    )
+            # Final status update after loop (or if no ssids)
+            # self.status_label.config(text=f"Status: Found {len(ssids)} networks") # Already set or handled
         except Exception as e:
             messagebox.showerror("Error", f"Failed to scan: {e}")
             self.status_label.config(text="Status: Error scanning")
         finally:
             if hasattr(self, 'current_theme_name'): # Re-apply theme to status label
                  themes.apply_theme_to_widget(self.status_label, themes.get_current_theme())
+
+    def _animate_list_item_in(self, index, ssid_text):
+        # This method is called by 'after' to finalize item appearance
+        # Ensure the item at 'index' still corresponds to 'ssid_text' if list can change dynamically,
+        # though for this specific scan, the list is static once scan_results are processed.
+        try:
+            current_palette = themes.get_current_theme()
+            # Get the actual text of the item at the index to be safe, though not strictly necessary here
+            # current_item_text = self.network_listbox.get(index)
+            # if current_item_text == ssid_text:
+            self.network_listbox.itemconfig(
+                index,
+                {
+                    'bg': current_palette.get("listbox_bg"),
+                    'fg': current_palette.get("fg_color"),
+                    'selectbackground': current_palette.get("select_bg"),
+                    'selectforeground': current_palette.get("fg_color") # Or a specific select fg
+                }
+            )
+        except tk.TclError:
+            # This can happen if the listbox is cleared or modified before animation completes.
+            # print(f"TclError during list item animation for index {index}")
+            pass
 
 
     def load_dictionary(self):

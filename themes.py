@@ -131,7 +131,10 @@ def apply_theme_to_widget(widget, theme_colors: dict):
     if widget_type == "Button":
         widget.config(
             bg=theme_colors.get("btn_bg"),
-            activebackground=theme_colors.get("btn_active_bg")
+            fg=theme_colors.get("fg_color"), # Ensure fg is also set
+            activebackground=theme_colors.get("btn_active_bg"),
+            activeforeground=theme_colors.get("fg_color"), # Ensure active fg is also set
+            relief=tk.RAISED # Default relief for buttons
         )
     elif widget_type == "Entry":
         widget.config(
