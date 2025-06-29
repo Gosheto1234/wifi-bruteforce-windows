@@ -1,3 +1,5 @@
+import tkinter as tk # Import tkinter
+
 """
 UI themes for the WiFi Brute Forcer.
 
