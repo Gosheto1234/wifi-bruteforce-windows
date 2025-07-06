@@ -17,12 +17,25 @@ except ImportError:
     raise ImportError("pywifi is required on Windows. Install with 'pip install pywifi'")
 
 try:
-    import themes # Import the themes module
-except ModuleNotFoundError:
-    # Provide a more specific error message if it still fails after path adjustment
-    print(f"Failed to import 'themes.py'. Ensure it's in the same directory: {script_dir}")
-    print(f"Current sys.path: {sys.path}")
-    raise
+    # Attempting relative import
+    from . import themes
+except ImportError: # Catch ImportError which can occur if not run as a package
+    try:
+        import themes # Fallback to direct import
+    except ModuleNotFoundError:
+        # Provide a more specific error message if it still fails
+        print(f"Failed to import 'themes.py'. Ensure it's in the same directory: {script_dir}")
+        print(f"Current sys.path: {sys.path}")
+        raise
+except ModuleNotFoundError: # Catch ModuleNotFoundError specifically for 'from . import themes'
+     # This might happen if __name__ is '__main__' and '.' is not a valid package context
+    try:
+        import themes # Fallback to direct import
+    except ModuleNotFoundError:
+        print(f"Failed to import 'themes.py' using relative or direct import. Ensure it's in the same directory: {script_dir}")
+        print(f"Current sys.path: {sys.path}")
+        raise
+
 
 class WifiBruteForcer:
     def __init__(self, master):
