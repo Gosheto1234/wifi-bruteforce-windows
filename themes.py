@@ -122,18 +122,50 @@ def apply_theme_to_widget(widget, theme_colors: dict):
         widget.config(fg=theme_colors.get("fg_color"))
     if 'activebackground' in widget.config():
         widget.config(activebackground=theme_colors.get("btn_active_bg"))
-    if 'activeforeground' in widget.config(): # For checkbuttons, buttons
+    if 'activeforeground' in widget.config(): # For checkbuttons, radiobuttons, buttons
         widget.config(activeforeground=theme_colors.get("fg_color")) # Assuming fg_color for active text
-    if 'selectcolor' in widget.config(): # For checkbuttons
-        widget.config(selectcolor=theme_colors.get("bg_color")) # Match background
 
     # Specific widget types
     widget_type = widget.winfo_class()
 
-    if widget_type == "Button":
+    # General properties like bg, fg, activebackground, activeforeground are set above.
+    # Here, we handle specifics like selectcolor or widget-specific relief/border.
+
+    if widget_type == "Checkbutton" or widget_type == "Radiobutton":
+        # selectcolor is the color of the check/radio mark itself when selected.
+        # The bg/fg of the text part of the widget is handled by general properties.
+        # activebackground/activeforeground for the text part is also handled by general properties.
         widget.config(
-            bg=theme_colors.get("btn_bg"),
-            fg=theme_colors.get("fg_color"), # Ensure fg is also set
+            selectcolor=theme_colors.get("btn_active_bg")
+        )
+    elif widget_type == "Button":
+        # Ensure button-specific properties are set. General properties cover some of this.
+        widget.config(
+            bg=theme_colors.get("btn_bg"), # Specific button background
+            activebackground=theme_colors.get("btn_active_bg"), # Specific button active background
+            relief=tk.RAISED
+        )
+    elif widget_type == "Entry":
+        widget.config(
+            bg=theme_colors.get("entry_bg"),
+            insertbackground=theme_colors.get("fg_color") # Cursor color
+        )
+    elif widget_type == "Listbox":
+        widget.config(
+            bg=theme_colors.get("listbox_bg"),
+            selectbackground=theme_colors.get("select_bg")
+        )
+    elif widget_type == "Label" or widget_type == "Frame": # No widget-specifics beyond general.
+        pass
+
+
+# Redundant button configuration block removed. The one inside "elif widget_type == 'Button'" is sufficient.
+# Ensure no duplication. The previous logic had two blocks for "Button".
+
+    # if widget_type == "Button":
+    #     widget.config(
+    #         bg=theme_colors.get("btn_bg"),
+    #         fg=theme_colors.get("fg_color"), # Ensure fg is also set
             activebackground=theme_colors.get("btn_active_bg"),
             activeforeground=theme_colors.get("fg_color"), # Ensure active fg is also set
             relief=tk.RAISED # Default relief for buttons
