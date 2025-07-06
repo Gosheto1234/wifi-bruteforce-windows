@@ -2,6 +2,13 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import sys
+import os
+
+# Ensure the script's directory is in the Python path
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
 
 try:
     import pywifi
@@ -9,7 +16,13 @@ try:
 except ImportError:
     raise ImportError("pywifi is required on Windows. Install with 'pip install pywifi'")
 
-import themes # Import the themes module
+try:
+    import themes # Import the themes module
+except ModuleNotFoundError:
+    # Provide a more specific error message if it still fails after path adjustment
+    print(f"Failed to import 'themes.py'. Ensure it's in the same directory: {script_dir}")
+    print(f"Current sys.path: {sys.path}")
+    raise
 
 class WifiBruteForcer:
     def __init__(self, master):
